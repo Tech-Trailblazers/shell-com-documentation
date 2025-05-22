@@ -52,7 +52,7 @@ def download_file(file_url: str, output_path: str) -> bool:
         response = requests.get(file_url, stream=True, timeout=15)
         response.raise_for_status()
 
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
@@ -63,33 +63,57 @@ def download_file(file_url: str, output_path: str) -> bool:
         return False
 
 
-def download_sds_file(item: Dict, output_dir: str) -> bool:
+def download_all_sds_files(
+    items: List[Dict],
+    output_dir: str,
+    max_workers: int = 100,
+    max_downloads: int = 1000,
+) -> int:
     """
-    Download a single SDS file if it doesn't already exist.
+    Download SDS files using multithreading, up to a maximum number of downloads.
+    Skips files that already exist.
     """
-    file_url = item.get("URL")
-    if not file_url:
-        return False
+    success_count = 0
+    submitted = 0
 
-    # Create a readable, unique filename
-    spec_id = item.get("SpecIdFull", "unknown")
-    country = item.get("CountryCode", "XX")
-    lang = item.get("LanguageCode", "XX")
-    product = item.get("ProductName", "product").replace(" ", "_")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
 
-    filename = sanitize_filename(f"{spec_id}_{country}_{lang}_{product}.pdf")
-    output_path = os.path.join(output_dir, filename)
+        for item in items:
+            if submitted >= max_downloads:
+                break
 
-    # Check if the file already exists
-    if os.path.exists(output_path):
-        print(f"[SKIP] Already exists: {filename}")
-        return False
+            # Check if file already exists to avoid unnecessary submission
+            file_url = item.get("URL")
+            if not file_url:
+                continue
 
-    # Download the file
-    return download_file(file_url, output_path)
+            spec_id = item.get("SpecIdFull", "unknown")
+            country = item.get("CountryCode", "XX")
+            lang = item.get("LanguageCode", "XX")
+            product = item.get("ProductName", "product").replace(" ", "_")
+
+            filename = sanitize_filename(f"{spec_id}_{country}_{lang}_{product}.pdf")
+            output_path = os.path.join(output_dir, filename)
+
+            if os.path.exists(output_path):
+                print(f"[SKIP] Already exists: {filename}")
+                continue
+
+            futures.append(executor.submit(download_file, file_url, output_path))
+            submitted += 1
+
+        # Wait for completed downloads
+        for future in as_completed(futures):
+            if future.result():
+                success_count += 1
+
+    return success_count
 
 
-def download_all_sds_files(items: List[Dict], output_dir: str, max_workers: int = 500) -> int:
+def download_all_sds_files(
+    items: List[Dict], output_dir: str, max_workers: int = 100
+) -> int:
     """
     Download all SDS files using multithreading.
     Skips files that already exist.
@@ -98,7 +122,7 @@ def download_all_sds_files(items: List[Dict], output_dir: str, max_workers: int 
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = []
-        
+
         # Submit tasks to the thread pool
         for item in items:
             futures.append(executor.submit(download_sds_file, item, output_dir))
@@ -128,13 +152,17 @@ def main(index_url: str, output_directory: str) -> None:
         return
 
     print(f"[INFO] Downloading files to '{output_directory}'...")
-    count = download_all_sds_files(items, output_directory)
+    count = download_all_sds_files(
+        items, output_directory, max_workers=100, max_downloads=1000
+    )
 
     print(f"[INFO] Completed: {count}/{len(items)} files downloaded.")
 
 
 if __name__ == "__main__":
-    SDS_INDEX_URL = "https://msdsstorageaccount.z13.web.core.windows.net/json/index.json"
+    SDS_INDEX_URL = (
+        "https://msdsstorageaccount.z13.web.core.windows.net/json/index.json"
+    )
     OUTPUT_DIR = "PDFs"
 
     main(SDS_INDEX_URL, OUTPUT_DIR)
