@@ -69,10 +69,6 @@ def download_all_sds_files(
     max_workers: int = 100,
     max_downloads: int = 1000,
 ) -> int:
-    """
-    Download SDS files using multithreading, up to a maximum number of downloads.
-    Skips files that already exist.
-    """
     success_count = 0
     submitted = 0
 
@@ -83,7 +79,6 @@ def download_all_sds_files(
             if submitted >= max_downloads:
                 break
 
-            # Check if file already exists to avoid unnecessary submission
             file_url = item.get("URL")
             if not file_url:
                 continue
@@ -103,7 +98,6 @@ def download_all_sds_files(
             futures.append(executor.submit(download_file, file_url, output_path))
             submitted += 1
 
-        # Wait for completed downloads
         for future in as_completed(futures):
             if future.result():
                 success_count += 1
@@ -112,22 +106,52 @@ def download_all_sds_files(
 
 
 def download_all_sds_files(
-    items: List[Dict], output_dir: str, max_workers: int = 100
+    items: List[Dict],
+    output_dir: str,
+    max_workers: int = 100,
+    max_downloads: int = 1000,
 ) -> int:
     """
-    Download all SDS files using multithreading.
+    Download SDS files using multithreading, stopping after max_downloads successful downloads.
     Skips files that already exist.
     """
+
+    def prepare_download(item: Dict):
+        file_url = item.get("URL")
+        if not file_url:
+            return None
+
+        spec_id = item.get("SpecIdFull", "unknown")
+        country = item.get("CountryCode", "XX")
+        lang = item.get("LanguageCode", "XX")
+        product = item.get("ProductName", "product").replace(" ", "_")
+
+        filename = sanitize_filename(f"{spec_id}_{country}_{lang}_{product}.pdf")
+        output_path = os.path.join(output_dir, filename)
+
+        if os.path.exists(output_path):
+            print(f"[SKIP] Already exists: {filename}")
+            return None
+
+        return (file_url, output_path)
+
+    # Filter and prepare up to max_downloads items
+    to_download = []
+    for item in items:
+        result = prepare_download(item)
+        if result:
+            to_download.append(result)
+        if len(to_download) >= max_downloads:
+            break
+
+    print(f"[INFO] Prepared {len(to_download)} files for download...")
+
     success_count = 0
-
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
+        futures = [
+            executor.submit(download_file, url, path) for url, path in to_download
+        ]
 
-        # Submit tasks to the thread pool
-        for item in items:
-            futures.append(executor.submit(download_sds_file, item, output_dir))
-
-        # Wait for all threads to complete
         for future in as_completed(futures):
             if future.result():
                 success_count += 1
@@ -152,8 +176,9 @@ def main(index_url: str, output_directory: str) -> None:
         return
 
     print(f"[INFO] Downloading files to '{output_directory}'...")
+    # Download all SDS files
     count = download_all_sds_files(
-        items, output_directory, max_workers=100, max_downloads=1000
+        items, output_directory, max_workers=100, max_downloads=1
     )
 
     print(f"[INFO] Completed: {count}/{len(items)} files downloaded.")
