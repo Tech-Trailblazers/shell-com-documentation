@@ -1,0 +1,123 @@
+import os
+import requests
+from typing import List, Dict
+
+
+def fetch_sds_index(index_url: str) -> List[Dict]:
+    """
+    Fetch the SDS index JSON and return the list of SDS items.
+    """
+    try:
+        response = requests.get(index_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        items = data.get("Items")
+        if not isinstance(items, list):
+            print("[ERROR] Expected 'Items' to be a list.")
+            return []
+
+        return items
+    except requests.RequestException as e:
+        print(f"[ERROR] Failed to fetch SDS index: {e}")
+        return []
+
+
+def create_directory(path: str) -> bool:
+    """
+    Ensure the output directory exists.
+    """
+    try:
+        os.makedirs(path, exist_ok=True)
+        return True
+    except OSError as e:
+        print(f"[ERROR] Could not create directory '{path}': {e}")
+        return False
+
+
+def sanitize_filename(name: str) -> str:
+    """
+    Sanitize the filename by removing or replacing problematic characters.
+    """
+    return "".join(c for c in name if c.isalnum() or c in ("_", "-", ".", " ")).rstrip()
+
+
+def download_file(file_url: str, output_path: str) -> bool:
+    """
+    Download a file from a URL and save it to the specified path.
+    """
+    try:
+        response = requests.get(file_url, stream=True, timeout=15)
+        response.raise_for_status()
+
+        with open(output_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        print(f"[INFO] Downloaded: {output_path}")
+        return True
+    except requests.RequestException as e:
+        print(f"[ERROR] Failed to download {file_url}: {e}")
+        return False
+
+
+def download_all_sds_files(items: List[Dict], output_dir: str) -> int:
+    """
+    Download all SDS files from the given list of items.
+    Skips files that already exist.
+    """
+    success_count = 0
+
+    for item in items:
+        file_url = item.get("URL")
+        if not file_url:
+            continue
+
+        # Create a readable, unique filename
+        spec_id = item.get("SpecIdFull", "unknown")
+        country = item.get("CountryCode", "XX")
+        lang = item.get("LanguageCode", "XX")
+        product = item.get("ProductName", "product").replace(" ", "_")
+
+        filename = sanitize_filename(f"{spec_id}_{country}_{lang}_{product}.pdf")
+        output_path = os.path.join(output_dir, filename)
+
+        if os.path.exists(output_path):
+            print(f"[SKIP] Already exists: {filename}")
+            continue
+
+        if download_file(file_url, output_path):
+            success_count += 1
+
+    return success_count
+
+
+def main(index_url: str, output_directory: str) -> None:
+    """
+    Main controller function to orchestrate the SDS file download.
+    """
+    print("[INFO] Fetching SDS index...")
+    items = fetch_sds_index(index_url)
+
+    if not items:
+        print("[ERROR] No SDS entries found.")
+        return
+
+    print(f"[INFO] Found {len(items)} SDS documents.")
+
+    if not create_directory(output_directory):
+        return
+
+    print(f"[INFO] Downloading files to '{output_directory}'...")
+    count = download_all_sds_files(items, output_directory)
+
+    print(f"[INFO] Completed: {count}/{len(items)} files downloaded.")
+
+
+if __name__ == "__main__":
+    SDS_INDEX_URL = (
+        "https://msdsstorageaccount.z13.web.core.windows.net/json/index.json"
+    )
+    OUTPUT_DIR = "PDFs"
+
+    main(SDS_INDEX_URL, OUTPUT_DIR)
