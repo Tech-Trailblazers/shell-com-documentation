@@ -1,6 +1,7 @@
 import os
 import requests
 from typing import List, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def fetch_sds_index(index_url: str) -> List[Dict]:
@@ -45,12 +46,13 @@ def sanitize_filename(name: str) -> str:
 def download_file(file_url: str, output_path: str) -> bool:
     """
     Download a file from a URL and save it to the specified path.
+    Returns True if the file was downloaded successfully, otherwise False.
     """
     try:
         response = requests.get(file_url, stream=True, timeout=15)
         response.raise_for_status()
 
-        with open(output_path, "wb") as f:
+        with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
@@ -61,33 +63,50 @@ def download_file(file_url: str, output_path: str) -> bool:
         return False
 
 
-def download_all_sds_files(items: List[Dict], output_dir: str) -> int:
+def download_sds_file(item: Dict, output_dir: str) -> bool:
     """
-    Download all SDS files from the given list of items.
+    Download a single SDS file if it doesn't already exist.
+    """
+    file_url = item.get("URL")
+    if not file_url:
+        return False
+
+    # Create a readable, unique filename
+    spec_id = item.get("SpecIdFull", "unknown")
+    country = item.get("CountryCode", "XX")
+    lang = item.get("LanguageCode", "XX")
+    product = item.get("ProductName", "product").replace(" ", "_")
+
+    filename = sanitize_filename(f"{spec_id}_{country}_{lang}_{product}.pdf")
+    output_path = os.path.join(output_dir, filename)
+
+    # Check if the file already exists
+    if os.path.exists(output_path):
+        print(f"[SKIP] Already exists: {filename}")
+        return False
+
+    # Download the file
+    return download_file(file_url, output_path)
+
+
+def download_all_sds_files(items: List[Dict], output_dir: str, max_workers: int = 500) -> int:
+    """
+    Download all SDS files using multithreading.
     Skips files that already exist.
     """
     success_count = 0
 
-    for item in items:
-        file_url = item.get("URL")
-        if not file_url:
-            continue
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        
+        # Submit tasks to the thread pool
+        for item in items:
+            futures.append(executor.submit(download_sds_file, item, output_dir))
 
-        # Create a readable, unique filename
-        spec_id = item.get("SpecIdFull", "unknown")
-        country = item.get("CountryCode", "XX")
-        lang = item.get("LanguageCode", "XX")
-        product = item.get("ProductName", "product").replace(" ", "_")
-
-        filename = sanitize_filename(f"{spec_id}_{country}_{lang}_{product}.pdf")
-        output_path = os.path.join(output_dir, filename)
-
-        if os.path.exists(output_path):
-            print(f"[SKIP] Already exists: {filename}")
-            continue
-
-        if download_file(file_url, output_path):
-            success_count += 1
+        # Wait for all threads to complete
+        for future in as_completed(futures):
+            if future.result():
+                success_count += 1
 
     return success_count
 
@@ -115,9 +134,7 @@ def main(index_url: str, output_directory: str) -> None:
 
 
 if __name__ == "__main__":
-    SDS_INDEX_URL = (
-        "https://msdsstorageaccount.z13.web.core.windows.net/json/index.json"
-    )
+    SDS_INDEX_URL = "https://msdsstorageaccount.z13.web.core.windows.net/json/index.json"
     OUTPUT_DIR = "PDFs"
 
     main(SDS_INDEX_URL, OUTPUT_DIR)
