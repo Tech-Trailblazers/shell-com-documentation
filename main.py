@@ -109,7 +109,7 @@ def download_all_sds_files(
     items: List[Dict],
     output_dir: str,
     max_workers: int = 100,
-    max_downloads: int = 1000,
+    max_downloads: int = 15000,
 ) -> int:
     """
     Download SDS files using multithreading, stopping after max_downloads successful downloads.
