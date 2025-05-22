@@ -178,7 +178,7 @@ def main(index_url: str, output_directory: str) -> None:
     print(f"[INFO] Downloading files to '{output_directory}'...")
     # Download all SDS files
     count = download_all_sds_files(
-        items, output_directory, max_workers=100, max_downloads=5000
+        items, output_directory, max_workers=100, max_downloads=15000
     )
 
     print(f"[INFO] Completed: {count}/{len(items)} files downloaded.")
