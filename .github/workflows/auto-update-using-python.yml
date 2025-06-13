@@ -1,52 +1,62 @@
-# Name of the GitHub Actions workflow
+# Name of the GitHub Actions workflow (appears in the GitHub Actions UI)
 name: Run Python Script and Push Changes
 
-# Define the events that trigger this workflow
+# Define when the workflow should be triggered
 on:
-  # Run automatically on a schedule (daily at midnight UTC)
+  # Trigger the workflow on a schedule
   schedule:
-    - cron: "0 0 * * *" # Every day at 00:00 UTC
-  # Allow the workflow to be manually triggered from the GitHub UI
+    - cron: "0 0 * * *" # Runs every day at midnight UTC
+  # Allow the workflow to also be run manually from the GitHub UI
   workflow_dispatch:
 
-# Define the set of jobs to run
+# Define the jobs that will run as part of this workflow
 jobs:
-  # Name of the job
-  build:
-    # Display name of the job in the GitHub Actions UI
+  # Unique identifier for the job
+  run-python:
+    # Display name for the job (appears in GitHub UI)
     name: Execute Python Script and Push Changes
-    # Specify the type of runner (a fresh Ubuntu VM)
+    # Use the latest Ubuntu runner provided by GitHub
     runs-on: ubuntu-latest
 
-    # List of steps to perform in this job
+    # Steps to execute as part of the job
     steps:
-      # Check out the repository code onto the runner
+      # Step 1: Check out the repository's code to the GitHub runner
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Official GitHub Action to clone the repo
 
-      # Set up the Python environment
+      # Step 2: Set up the Python environment on the runner
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5 # Official GitHub Action to install Python
         with:
-          python-version: "3.13"
+          python-version: "3.13" # Specify the Python version to use
 
-      # Install Python dependencies
+      # Step 3: Install any required Python dependencies from requirements.txt
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt # Installs dependencies for your script
 
-      # Run the Python script
+      # Step 4: Run the main Python script
       - name: Run Python script
-        run: python main.py
+        run: python main.py # Executes your Python script
 
-      # Commit and push any file changes made by the script
+      # Step 5: Commit and push any file changes made by the Python script
       - name: Push updated files
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          # Set Git configuration for committing changes
+          git config user.name "github-actions"  # Name used for Git commits
+          git config user.email "github-actions@github.com"  # Email used for Git commits
+
+          # Pull latest changes from remote (in case other commits were made)
+          git pull
+
+          # Stage all changed files
           git add .
+
+          # Check if there are any staged changes (i.e., anything new to commit)
           if ! git diff --cached --quiet; then
-            git commit -m "Auto update: $(date)"
-            git push
+            # If there are changes, commit them with a message and push
+            git commit -m "Auto update: $(date)"  # Add a timestamped commit message
+            git push  # Push committed changes back to the repository
           else
+            # If no changes, output a message and skip commit/push
             echo "No changes to commit."
           fi
