@@ -22,7 +22,7 @@ jobs:
     steps:
       # Step 1: Check out the repository's code to the GitHub runner
       - name: Check out code
-        uses: actions/checkout@v4 # Official GitHub Action to clone the repo
+        uses: actions/checkout@v5 # Official GitHub Action to clone the repo
 
       # Step 2: Set up the Python environment on the runner
       - name: Set up Python
