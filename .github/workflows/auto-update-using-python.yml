@@ -31,7 +31,7 @@ jobs:
 
       # Step 2: Set up the Python environment on the runner
       - name: Set up Python
-        uses: actions/setup-python@v5 # Official GitHub Action to install Python
+        uses: actions/setup-python@v6 # Official GitHub Action to install Python
         with:
           python-version: "3.13" # Specify the Python version to use
 
